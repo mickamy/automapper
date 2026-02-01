@@ -9,7 +9,7 @@ all: build
 
 build:
 	@echo "Building $(APP_NAME)..."
-	go build $(LDFLAGS) -o bin/$(APP_NAME) .
+	go build $(LDFLAGS) -o bin/$(APP_NAME) ./cmd
 
 install:
 	@echo "Installing $(APP_NAME)..."
@@ -19,7 +19,7 @@ install:
 	fi; \
 	mkdir -p "$$bin_dir"; \
 	echo "Installing to $$bin_dir/$(APP_NAME)"; \
-	go build $(LDFLAGS) -o "$$bin_dir/$(APP_NAME)" .
+	go build $(LDFLAGS) -o "$$bin_dir/$(APP_NAME)" ./cmd
 
 uninstall:
 	@echo "Uninstalling $(APP_NAME)..."
