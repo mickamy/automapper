@@ -109,8 +109,8 @@ func (g *Generator) GenerateFile(mappings []*resolver.Mapping, direction string)
 
 // generateFunctions generates function data for a mapping.
 func (g *Generator) generateFunctions(m *resolver.Mapping, direction string) ([]FunctionData, []string) {
-	var funcs []FunctionData
-	var allImports []string
+	funcs := make([]FunctionData, 0, 2)
+	allImports := make([]string, 0, 2)
 
 	// Generate function name
 	baseName := g.functionName(m.Source, m.Target, direction)
