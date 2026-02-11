@@ -7,7 +7,7 @@ A CLI tool that automatically generates struct-to-struct mapping code for Go.
 ## Installation
 
 ```bash
-go install github.com/mickamy/automapper/cmd@latest
+go install github.com/mickamy/automapper/cmd/automapper
 ```
 
 ## Basic Usage
