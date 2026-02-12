@@ -164,6 +164,10 @@ func processMapping(a *analyzer.Analyzer, reg *registry.Registry, currentPkg *pa
 	var forwardMappings []*resolver.Mapping
 	var reverseMappings []*resolver.Mapping
 
+	// Discover explicit mappings from other go:generate automapper directives
+	// so we can skip generating nested mappers that have their own directive.
+	explicitMappings := discoverExplicitMappings(a, currentPkg)
+
 	// Queue of type pairs to process
 	type structPair struct {
 		source *analyzer.StructInfo
@@ -253,6 +257,12 @@ func processMapping(a *analyzer.Analyzer, reg *registry.Registry, currentPkg *pa
 					continue
 				}
 
+				// Skip if this nested pair is covered by an explicit go:generate directive
+				nestedKey := sourceNestedInfo.PkgPath + "." + sourceNestedInfo.Name + "->" + targetNestedInfo.PkgPath + "." + targetNestedInfo.Name
+				if explicitMappings[nestedKey] {
+					continue
+				}
+
 				queue = append(queue, structPair{source: sourceNestedInfo, target: targetNestedInfo})
 			}
 		}
@@ -316,6 +326,78 @@ func resolveType(a *analyzer.Analyzer, currentPkg *packages.Package, typeStr str
 	}
 
 	return info, nil
+}
+
+// discoverExplicitMappings scans Go source files of the current package for
+// //go:generate automapper directives and returns the set of explicitly-declared
+// type mapping pairs. Each key is "sourcePkgPath.TypeName->targetPkgPath.TypeName".
+func discoverExplicitMappings(a *analyzer.Analyzer, currentPkg *packages.Package) map[string]bool {
+	result := make(map[string]bool)
+
+	for _, goFile := range currentPkg.GoFiles {
+		content, err := os.ReadFile(goFile) //nolint:gosec // goFile comes from the Go toolchain, not user input
+		if err != nil {
+			continue
+		}
+
+		for _, line := range strings.Split(string(content), "\n") {
+			line = strings.TrimSpace(line)
+			if !strings.HasPrefix(line, "//go:generate ") {
+				continue
+			}
+			if !strings.Contains(line, "automapper") {
+				continue
+			}
+
+			pairs := parseAutomapperDirective(line)
+			for _, p := range pairs {
+				fromInfo, err := resolveType(a, currentPkg, p.From)
+				if err != nil {
+					continue
+				}
+				toInfo, err := resolveType(a, currentPkg, p.To)
+				if err != nil {
+					continue
+				}
+
+				key := fromInfo.PkgPath + "." + fromInfo.Name + "->" + toInfo.PkgPath + "." + toInfo.Name
+				result[key] = true
+			}
+		}
+	}
+
+	return result
+}
+
+// parseAutomapperDirective extracts type pairs from an automapper go:generate directive line.
+func parseAutomapperDirective(line string) []typePair {
+	args := strings.Fields(line)
+
+	var from, to, types string
+	for _, arg := range args {
+		switch {
+		case strings.HasPrefix(arg, "-from="):
+			from = strings.TrimPrefix(arg, "-from=")
+		case strings.HasPrefix(arg, "-to="):
+			to = strings.TrimPrefix(arg, "-to=")
+		case strings.HasPrefix(arg, "-types="):
+			types = strings.TrimPrefix(arg, "-types=")
+		}
+	}
+
+	var pairs []typePair
+	if from != "" && to != "" {
+		pairs = append(pairs, typePair{From: from, To: to})
+	}
+	if types != "" {
+		parts := strings.SplitN(types, ":", 2)
+		if len(parts) == 2 {
+			pairs = append(pairs, typePair{From: parts[0], To: parts[1]})
+			pairs = append(pairs, typePair{From: parts[1], To: parts[0]})
+		}
+	}
+
+	return pairs
 }
 
 // toSnakeCase converts a CamelCase string to snake_case.
