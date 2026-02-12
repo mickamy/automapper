@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"golang.org/x/tools/go/packages"
 
@@ -267,9 +268,9 @@ func processMapping(a *analyzer.Analyzer, reg *registry.Registry, currentPkg *pa
 	}
 
 	// Determine output filename
-	outputFile := strings.ToLower(sourceInfo.Name) + ".gen.go"
+	outputFile := toSnakeCase(sourceInfo.Name) + "_gen.go"
 	if outputDir == "." {
-		outputFile = strings.ToLower(sourceInfo.Name) + "_" + strings.ToLower(strings.ReplaceAll(targetInfo.QualifiedName(), ".", "_")) + ".gen.go"
+		outputFile = toSnakeCase(sourceInfo.Name) + "_" + strings.ToLower(strings.ReplaceAll(targetInfo.QualifiedName(), ".", "_")) + "_gen.go"
 	}
 
 	outputPath := filepath.Join(outputDir, outputFile)
@@ -286,7 +287,7 @@ func processMapping(a *analyzer.Analyzer, reg *registry.Registry, currentPkg *pa
 			return fmt.Errorf("generate reverse code: %w", err)
 		}
 
-		reverseFile := strings.ToLower(targetInfo.Name) + "_reverse.gen.go"
+		reverseFile := toSnakeCase(targetInfo.Name) + "_reverse_gen.go"
 		reversePath := filepath.Join(outputDir, reverseFile)
 		if err := os.WriteFile(reversePath, reverseCode, 0600); err != nil {
 			return fmt.Errorf("write reverse output file: %w", err)
@@ -315,4 +316,30 @@ func resolveType(a *analyzer.Analyzer, currentPkg *packages.Package, typeStr str
 	}
 
 	return info, nil
+}
+
+// toSnakeCase converts a CamelCase string to snake_case.
+// Consecutive uppercase letters (acronyms) are kept together:
+//
+//	FooBar → foo_bar, HTTPClient → http_client, OAuth → o_auth, UserID → user_id.
+func toSnakeCase(s string) string {
+	runes := []rune(s)
+	var result []rune
+
+	for i, r := range runes {
+		if unicode.IsUpper(r) {
+			// Insert underscore if:
+			// - not the first character, AND
+			// - previous char is lowercase, OR next char is lowercase (end of acronym).
+			if i > 0 && (unicode.IsLower(runes[i-1]) || (i+1 < len(runes) && unicode.IsLower(runes[i+1]))) {
+				result = append(result, '_')
+			}
+
+			result = append(result, unicode.ToLower(r))
+		} else {
+			result = append(result, r)
+		}
+	}
+
+	return string(result)
 }
