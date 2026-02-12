@@ -48,7 +48,11 @@ func (a *Analyzer) LoadPackage(pattern string) (*packages.Package, error) {
 
 	pkg := pkgs[0]
 	if len(pkg.Errors) > 0 {
-		return nil, fmt.Errorf("package %s has errors: %v", pattern, pkg.Errors)
+		// If type information is unavailable, the package cannot be analyzed.
+		// Otherwise, ignore errors from unrelated files in the same package.
+		if pkg.Types == nil || pkg.TypesInfo == nil {
+			return nil, fmt.Errorf("package %s has errors: %v", pattern, pkg.Errors)
+		}
 	}
 
 	a.pkgs[pattern] = pkg
