@@ -155,27 +155,33 @@ func (a *Analyzer) ResolveType(typeStr string, basePkg *packages.Package) (*Stru
 		return a.FindStruct(basePkg, typeName)
 	}
 
-	// Find the import for this package name
-	var importPath string
+	// Find all imports matching the package name.
+	// Multiple packages can share the same name (e.g., different "model" packages),
+	// so try each one and return the first that contains the desired type.
+	var candidates []string
 	for path, imp := range basePkg.Imports {
 		if imp.Name == pkgName {
-			importPath = path
-
-			break
+			candidates = append(candidates, path)
 		}
 	}
 
-	if importPath == "" {
-		// Try loading by package name directly (for local packages)
+	if len(candidates) == 0 {
 		return nil, fmt.Errorf("import %s not found in package %s", pkgName, basePkg.PkgPath)
 	}
 
-	pkg, err := a.LoadPackage(importPath)
-	if err != nil {
-		return nil, fmt.Errorf("load import %s: %w", importPath, err)
+	for _, importPath := range candidates {
+		pkg, err := a.LoadPackage(importPath)
+		if err != nil {
+			continue
+		}
+
+		info, err := a.FindStruct(pkg, typeName)
+		if err == nil {
+			return info, nil
+		}
 	}
 
-	return a.FindStruct(pkg, typeName)
+	return nil, fmt.Errorf("type %s not found in any %s package imported by %s", typeName, pkgName, basePkg.PkgPath)
 }
 
 // splitTypeName splits "pkg.Type" into ("pkg", "Type") or ("", "Type") for unqualified types.
