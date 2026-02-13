@@ -240,6 +240,10 @@ func (r *Resolver) resolveField(targetField analyzer.FieldInfo, sourceFields map
 			}
 
 			// Will need to generate a mapper for this
+			if !hasMatchingExportedFields(sourceElem, targetElem) {
+				return FieldMapping{}, &Error{Message: "cannot map " + sourceField.TypeStr + " to " + targetField.TypeStr + ": slice element structs have no matching fields, consider registering a converter"}
+			}
+
 			return FieldMapping{
 				SourceField: sourceField.Name,
 				TargetField: targetField.Name,
@@ -284,7 +288,11 @@ func (r *Resolver) resolveField(targetField analyzer.FieldInfo, sourceFields map
 			}, nil
 		}
 
-		// Will need to generate a mapper
+		// Will need to generate a mapper — but only if the structs share fields
+		if !hasMatchingExportedFields(sourceDeref, targetDeref) {
+			return FieldMapping{}, &Error{Message: "cannot map " + sourceField.TypeStr + " to " + targetField.TypeStr + ": no matching fields, consider registering a converter"}
+		}
+
 		return FieldMapping{
 			SourceField: sourceField.Name,
 			TargetField: targetField.Name,
@@ -296,6 +304,51 @@ func (r *Resolver) resolveField(targetField analyzer.FieldInfo, sourceFields map
 
 	// Rule 8: Cannot resolve
 	return FieldMapping{}, &Error{Message: "cannot map " + sourceField.TypeStr + " to " + targetField.TypeStr}
+}
+
+// hasMatchingExportedFields checks if two struct types share at least one
+// exported field name (case-insensitive). When no fields match, automatic
+// nested mapping would produce a zero-value mapper, so callers should
+// require a converter instead.
+func hasMatchingExportedFields(sourceType, targetType types.Type) bool {
+	sourceStruct := underlyingStruct(sourceType)
+	targetStruct := underlyingStruct(targetType)
+	if sourceStruct == nil || targetStruct == nil {
+		return false
+	}
+
+	sourceNames := make(map[string]bool)
+	for i := 0; i < sourceStruct.NumFields(); i++ {
+		f := sourceStruct.Field(i)
+		if f.Exported() {
+			sourceNames[strings.ToLower(f.Name())] = true
+		}
+	}
+
+	for i := 0; i < targetStruct.NumFields(); i++ {
+		f := targetStruct.Field(i)
+		if f.Exported() && sourceNames[strings.ToLower(f.Name())] {
+			return true
+		}
+	}
+
+	return false
+}
+
+// underlyingStruct extracts the *types.Struct from a type, dereferencing
+// pointers and unwrapping named types as needed.
+func underlyingStruct(t types.Type) *types.Struct {
+	t = analyzer.Dereference(t)
+	if named, ok := t.(*types.Named); ok {
+		if s, ok := named.Underlying().(*types.Struct); ok {
+			return s
+		}
+	}
+	if s, ok := t.(*types.Struct); ok {
+		return s
+	}
+
+	return nil
 }
 
 // typesEqual compares two types for equality.
