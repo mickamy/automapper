@@ -17,11 +17,19 @@ import (
 	"github.com/mickamy/automapper/internal/resolver"
 )
 
+// ImportEntry represents a single import with an optional alias.
+type ImportEntry struct {
+	Path  string
+	Alias string // empty if no alias needed
+}
+
 // Generator produces mapper code.
 type Generator struct {
-	registry   *registry.Registry
-	outputPkg  string
-	outputPath string
+	registry      *registry.Registry
+	outputPkg     string
+	outputPath    string
+	qualifiers    map[string]string // pkgPath -> unique qualifier
+	declaredNames map[string]string // pkgPath -> declared package name
 }
 
 // New creates a new Generator.
@@ -36,7 +44,7 @@ func New(reg *registry.Registry, outputPkg, outputPath string) *Generator {
 // FileData holds data for generating a complete file.
 type FileData struct {
 	PackageName string
-	Imports     []string
+	Imports     []ImportEntry
 	Functions   []FunctionData
 }
 
@@ -72,6 +80,10 @@ func (g *Generator) GenerateFile(mappings []*resolver.Mapping, direction string)
 		PackageName: g.outputPkg,
 	}
 
+	// Build qualifier map before generating functions so all references
+	// use consistent, collision-free package qualifiers.
+	g.qualifiers, g.declaredNames = g.buildQualifiers(mappings)
+
 	importSet := make(map[string]bool)
 
 	for _, m := range mappings {
@@ -82,11 +94,20 @@ func (g *Generator) GenerateFile(mappings []*resolver.Mapping, direction string)
 		}
 	}
 
-	// Convert import set to sorted slice
+	// Convert import set to sorted ImportEntry slice
 	for imp := range importSet {
-		data.Imports = append(data.Imports, imp)
+		entry := ImportEntry{Path: imp}
+		if alias, ok := g.qualifiers[imp]; ok {
+			declared := g.declaredNames[imp]
+			if alias != declared {
+				entry.Alias = alias
+			}
+		}
+		data.Imports = append(data.Imports, entry)
 	}
-	sort.Strings(data.Imports)
+	sort.Slice(data.Imports, func(i, j int) bool {
+		return data.Imports[i].Path < data.Imports[j].Path
+	})
 
 	var buf bytes.Buffer
 	if err := templates.ExecuteTemplate(&buf, "file", data); err != nil {
@@ -200,7 +221,12 @@ func (g *Generator) qualifiedType(info *analyzer.StructInfo, imports *[]string) 
 
 	*imports = append(*imports, info.PkgPath)
 
-	return info.PkgName + "." + info.Name
+	qualifier := info.PkgName
+	if q, ok := g.qualifiers[info.PkgPath]; ok {
+		qualifier = q
+	}
+
+	return qualifier + "." + info.Name
 }
 
 // functionName generates a function name based on direction.
@@ -231,9 +257,13 @@ func (g *Generator) converterCall(conv *registry.Converter, imports *[]string) s
 		return conv.FuncName
 	}
 	*imports = append(*imports, conv.PkgPath)
-	pkgName := path.Base(conv.PkgPath)
 
-	return pkgName + "." + conv.FuncName
+	qualifier := path.Base(conv.PkgPath)
+	if q, ok := g.qualifiers[conv.PkgPath]; ok {
+		qualifier = q
+	}
+
+	return qualifier + "." + conv.FuncName
 }
 
 // nestedCall generates a nested mapper call.
@@ -368,7 +398,12 @@ func (g *Generator) typesTypeString(t types.Type, imports *[]string) string {
 		}
 		*imports = append(*imports, pkgPath)
 
-		return pkg.Name() + "." + v.Obj().Name()
+		qualifier := pkg.Name()
+		if q, ok := g.qualifiers[pkgPath]; ok {
+			qualifier = q
+		}
+
+		return qualifier + "." + v.Obj().Name()
 	case *types.Basic:
 		return v.Name()
 	default:
@@ -378,7 +413,12 @@ func (g *Generator) typesTypeString(t types.Type, imports *[]string) string {
 			}
 			*imports = append(*imports, p.Path())
 
-			return p.Name()
+			qualifier := p.Name()
+			if q, ok := g.qualifiers[p.Path()]; ok {
+				qualifier = q
+			}
+
+			return qualifier
 		})
 	}
 }
@@ -391,3 +431,95 @@ func (g *Generator) nilOrZero(info *analyzer.StructInfo, returnsPointer bool) st
 
 	return g.qualifiedType(info, &[]string{}) + "{}"
 }
+
+// buildQualifiers scans all mappings to collect referenced packages,
+// detects name collisions, and assigns unique aliases.
+// Returns (qualifiers, declaredNames) where qualifiers maps pkgPath to the
+// qualifier to use in generated code, and declaredNames maps pkgPath to the
+// package's declared name (from its package statement).
+func (g *Generator) buildQualifiers(mappings []*resolver.Mapping) (map[string]string, map[string]string) {
+	// pkgs maps pkgPath -> declared package name
+	pkgs := make(map[string]string)
+
+	for _, m := range mappings {
+		g.registerPkg(pkgs, m.Source.PkgPath, m.Source.PkgName)
+		g.registerPkg(pkgs, m.Target.PkgPath, m.Target.PkgName)
+		for _, fm := range m.Fields {
+			g.collectTypePkgs(fm.SourceType, pkgs)
+			g.collectTypePkgs(fm.TargetType, pkgs)
+			if fm.Converter != nil && fm.Converter.PkgPath != "" && fm.Converter.PkgPath != g.outputPkg {
+				if _, exists := pkgs[fm.Converter.PkgPath]; !exists {
+					pkgs[fm.Converter.PkgPath] = path.Base(fm.Converter.PkgPath)
+				}
+			}
+		}
+	}
+
+	// Group by declared name to find collisions.
+	// nameGroups maps declaredName -> []pkgPath
+	nameGroups := make(map[string][]string)
+	for pkgPath, name := range pkgs {
+		nameGroups[name] = append(nameGroups[name], pkgPath)
+	}
+
+	// Build qualifier map. Only assign aliases for colliding names.
+	qualifiers := make(map[string]string, len(pkgs))
+	for name, paths := range nameGroups {
+		if len(paths) == 1 {
+			qualifiers[paths[0]] = name
+			continue
+		}
+		// Collision: use parentDir + declaredName as alias.
+		aliasCount := make(map[string]int)
+		for _, pkgPath := range paths {
+			parent := path.Base(path.Dir(pkgPath))
+			alias := parent + name
+			aliasCount[alias]++
+		}
+		// Assign aliases, appending numeric suffix if aliases still collide.
+		usedAliases := make(map[string]int)
+		for _, pkgPath := range paths {
+			parent := path.Base(path.Dir(pkgPath))
+			alias := parent + name
+			if aliasCount[alias] > 1 {
+				idx := usedAliases[alias]
+				usedAliases[alias]++
+				if idx > 0 {
+					alias = fmt.Sprintf("%s%d", alias, idx)
+				}
+			}
+			qualifiers[pkgPath] = alias
+		}
+	}
+
+	return qualifiers, pkgs
+}
+
+// registerPkg adds a package to the map if it's external.
+func (g *Generator) registerPkg(pkgs map[string]string, pkgPath, pkgName string) {
+	if pkgPath == "" || pkgPath == g.outputPkg {
+		return
+	}
+	if _, exists := pkgs[pkgPath]; !exists {
+		pkgs[pkgPath] = pkgName
+	}
+}
+
+// collectTypePkgs walks a types.Type tree to collect referenced packages.
+func (g *Generator) collectTypePkgs(t types.Type, pkgs map[string]string) {
+	if t == nil {
+		return
+	}
+	switch v := t.(type) {
+	case *types.Pointer:
+		g.collectTypePkgs(v.Elem(), pkgs)
+	case *types.Slice:
+		g.collectTypePkgs(v.Elem(), pkgs)
+	case *types.Named:
+		pkg := v.Obj().Pkg()
+		if pkg != nil {
+			g.registerPkg(pkgs, pkg.Path(), pkg.Name())
+		}
+	}
+}
+

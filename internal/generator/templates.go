@@ -11,8 +11,9 @@ package {{.PackageName}}
 
 {{if .Imports}}
 import (
-{{range .Imports}}	"{{.}}"
-{{end}})
+{{range .Imports}}{{if .Alias}}	{{.Alias}} "{{.Path}}"
+{{else}}	"{{.Path}}"
+{{end}}{{end}})
 {{end}}
 
 {{range .Functions}}
