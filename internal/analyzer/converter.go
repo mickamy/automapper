@@ -120,8 +120,11 @@ func parseRegisterCallWithTypes(call *ast.CallExpr, idx *ast.IndexListExpr, sel 
 		return ConverterInfo{}, false
 	}
 
-	info.SourceType = exprToTypeString(idx.Indices[0])
-	info.TargetType = exprToTypeString(idx.Indices[1])
+	// Prefer using type checker info to resolve type parameters, as it
+	// correctly handles import aliases (e.g., cmodel "pkg/model").
+	// Fall back to AST-based string extraction if type info is unavailable.
+	info.SourceType = resolveTypeExpr(idx.Indices[0], pkg)
+	info.TargetType = resolveTypeExpr(idx.Indices[1], pkg)
 
 	// Extract the function being registered
 	funcArgIdx := 0
@@ -172,6 +175,18 @@ func extractFirstStringArg(call *ast.CallExpr) string {
 	}
 	// Remove quotes
 	return strings.Trim(lit.Value, `"`)
+}
+
+// resolveTypeExpr resolves a type expression to a fully qualified type string
+// using the package's type checker info. Falls back to AST-based extraction.
+func resolveTypeExpr(expr ast.Expr, pkg *packages.Package) string {
+	if pkg.TypesInfo != nil {
+		if tv, ok := pkg.TypesInfo.Types[expr]; ok {
+			return QualifiedTypeName(tv.Type)
+		}
+	}
+
+	return exprToTypeString(expr)
 }
 
 // exprToTypeString converts an AST expression to a type string.
