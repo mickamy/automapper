@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/types"
+	"strings"
 
 	"golang.org/x/tools/go/packages"
 )
@@ -162,6 +163,24 @@ func (a *Analyzer) ResolveType(typeStr string, basePkg *packages.Package) (*Stru
 	for path, imp := range basePkg.Imports {
 		if imp.Name == pkgName {
 			candidates = append(candidates, path)
+		}
+	}
+
+	// Also check explicit import aliases in source files, since imp.Name is
+	// the declared package name which may differ from the alias used in code
+	// (e.g., paymentmethodv1 "github.com/.../payment_method/v1").
+	if len(candidates) == 0 {
+		seen := make(map[string]bool)
+		for _, file := range basePkg.Syntax {
+			for _, spec := range file.Imports {
+				if spec.Name != nil && spec.Name.Name == pkgName {
+					importPath := strings.Trim(spec.Path.Value, `"`)
+					if !seen[importPath] {
+						seen[importPath] = true
+						candidates = append(candidates, importPath)
+					}
+				}
+			}
 		}
 	}
 
