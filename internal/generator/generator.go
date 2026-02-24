@@ -27,17 +27,19 @@ type ImportEntry struct {
 type Generator struct {
 	registry      *registry.Registry
 	outputPkg     string
+	outputPkgPath string // full import path of the output package (empty if unknown)
 	outputPath    string
 	qualifiers    map[string]string // pkgPath -> unique qualifier
 	declaredNames map[string]string // pkgPath -> declared package name
 }
 
 // New creates a new Generator.
-func New(reg *registry.Registry, outputPkg, outputPath string) *Generator {
+func New(reg *registry.Registry, outputPkg, outputPkgPath, outputPath string) *Generator {
 	return &Generator{
-		registry:   reg,
-		outputPkg:  outputPkg,
-		outputPath: outputPath,
+		registry:      reg,
+		outputPkg:     outputPkg,
+		outputPkgPath: outputPkgPath,
+		outputPath:    outputPath,
 	}
 }
 
@@ -215,7 +217,7 @@ func (g *Generator) generateField(fm resolver.FieldMapping, imports *[]string, v
 
 // qualifiedType returns the qualified type name and adds imports.
 func (g *Generator) qualifiedType(info *analyzer.StructInfo, imports *[]string) string {
-	if info.PkgPath == "" || info.PkgPath == g.outputPkg {
+	if g.isOutputPkg(info.PkgPath) {
 		return info.Name
 	}
 
@@ -242,7 +244,7 @@ func (g *Generator) functionName(source, target *analyzer.StructInfo, direction 
 // shortTypeName returns a short name for a struct type.
 func (g *Generator) shortTypeName(info *analyzer.StructInfo) string {
 	// If same package, just use type name
-	if info.PkgPath == "" || path.Base(info.PkgPath) == g.outputPkg {
+	if g.isOutputPkg(info.PkgPath) {
 		return info.Name
 	}
 	// Otherwise include package name in CamelCase
@@ -253,7 +255,7 @@ func (g *Generator) shortTypeName(info *analyzer.StructInfo) string {
 
 // converterCall generates a converter function call.
 func (g *Generator) converterCall(conv *registry.Converter, imports *[]string) string {
-	if conv.PkgPath == "" || conv.PkgPath == g.outputPkg {
+	if g.isOutputPkg(conv.PkgPath) {
 		return conv.FuncName
 	}
 	*imports = append(*imports, conv.PkgPath)
@@ -284,7 +286,7 @@ func (g *Generator) nestedCall(fm resolver.FieldMapping, _ *[]string, direction 
 	var funcName string
 	if direction == "to" {
 		funcName = "To" + targetName
-		if targetPkg != "" && targetPkg != g.outputPkg {
+		if !g.isOutputPkg(targetPkg) {
 			pkgName := path.Base(targetPkg)
 			funcName = "To" + strings.ToUpper(pkgName[:1]) + pkgName[1:] + targetName
 		}
@@ -293,7 +295,7 @@ func (g *Generator) nestedCall(fm resolver.FieldMapping, _ *[]string, direction 
 		sourceName := analyzer.TypeName(fm.SourceType)
 		sourcePkg := analyzer.TypePkgPath(fm.SourceType)
 		funcName = "From" + sourceName
-		if sourcePkg != "" && sourcePkg != g.outputPkg {
+		if !g.isOutputPkg(sourcePkg) {
 			pkgName := path.Base(sourcePkg)
 			funcName = "From" + strings.ToUpper(pkgName[:1]) + pkgName[1:] + sourceName
 		}
@@ -331,7 +333,7 @@ func (g *Generator) sliceCall(fm resolver.FieldMapping, imports *[]string, direc
 	default:
 		if direction == "to" {
 			funcName = "To" + targetName
-			if targetPkg != "" && targetPkg != g.outputPkg {
+			if !g.isOutputPkg(targetPkg) {
 				pkgName := path.Base(targetPkg)
 				funcName = "To" + strings.ToUpper(pkgName[:1]) + pkgName[1:] + targetName
 			}
@@ -340,7 +342,7 @@ func (g *Generator) sliceCall(fm resolver.FieldMapping, imports *[]string, direc
 			sourceName := analyzer.TypeName(sourceElem)
 			sourcePkg := analyzer.TypePkgPath(sourceElem)
 			funcName = "From" + sourceName
-			if sourcePkg != "" && sourcePkg != g.outputPkg {
+			if !g.isOutputPkg(sourcePkg) {
 				pkgName := path.Base(sourcePkg)
 				funcName = "From" + strings.ToUpper(pkgName[:1]) + pkgName[1:] + sourceName
 			}
@@ -393,7 +395,7 @@ func (g *Generator) typesTypeString(t types.Type, imports *[]string) string {
 			return v.Obj().Name()
 		}
 		pkgPath := pkg.Path()
-		if pkgPath == g.outputPkg || pkgPath == "" {
+		if g.isOutputPkg(pkgPath) {
 			return v.Obj().Name()
 		}
 		*imports = append(*imports, pkgPath)
@@ -423,6 +425,17 @@ func (g *Generator) typesTypeString(t types.Type, imports *[]string) string {
 	}
 }
 
+// isOutputPkg reports whether pkgPath refers to the output package.
+func (g *Generator) isOutputPkg(pkgPath string) bool {
+	if pkgPath == "" {
+		return true
+	}
+	if g.outputPkgPath != "" {
+		return pkgPath == g.outputPkgPath
+	}
+	return pkgPath == g.outputPkg
+}
+
 // nilOrZero returns "nil" for pointer returns or "Type{}" for value returns.
 func (g *Generator) nilOrZero(info *analyzer.StructInfo, returnsPointer bool) string {
 	if returnsPointer {
@@ -447,7 +460,7 @@ func (g *Generator) buildQualifiers(mappings []*resolver.Mapping) (map[string]st
 		for _, fm := range m.Fields {
 			g.collectTypePkgs(fm.SourceType, pkgs)
 			g.collectTypePkgs(fm.TargetType, pkgs)
-			if fm.Converter != nil && fm.Converter.PkgPath != "" && fm.Converter.PkgPath != g.outputPkg {
+			if fm.Converter != nil && !g.isOutputPkg(fm.Converter.PkgPath) {
 				if _, exists := pkgs[fm.Converter.PkgPath]; !exists {
 					pkgs[fm.Converter.PkgPath] = path.Base(fm.Converter.PkgPath)
 				}
@@ -497,7 +510,7 @@ func (g *Generator) buildQualifiers(mappings []*resolver.Mapping) (map[string]st
 
 // registerPkg adds a package to the map if it's external.
 func (g *Generator) registerPkg(pkgs map[string]string, pkgPath, pkgName string) {
-	if pkgPath == "" || pkgPath == g.outputPkg {
+	if g.isOutputPkg(pkgPath) {
 		return
 	}
 	if _, exists := pkgs[pkgPath]; !exists {

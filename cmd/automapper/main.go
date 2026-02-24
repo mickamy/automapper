@@ -122,15 +122,17 @@ func run() error {
 		return fmt.Errorf("create output directory: %w", err)
 	}
 
-	// Determine output package name
+	// Determine output package name and path
 	outputPkgName := filepath.Base(outputDir)
+	outputPkgPath := ""
 	if outputDir == cwd {
 		outputPkgName = currentPkg.Name
+		outputPkgPath = currentPkg.PkgPath
 	}
 
 	// Process each mapping
 	for _, mp := range mappings {
-		if err := processMapping(a, reg, currentPkg, mp, outputDir, outputPkgName); err != nil {
+		if err := processMapping(a, reg, currentPkg, mp, outputDir, outputPkgName, outputPkgPath); err != nil {
 			return err
 		}
 	}
@@ -144,7 +146,7 @@ type typePair struct {
 	Bidirectional bool
 }
 
-func processMapping(a *analyzer.Analyzer, reg *registry.Registry, currentPkg *packages.Package, mp typePair, outputDir, outputPkgName string) error {
+func processMapping(a *analyzer.Analyzer, reg *registry.Registry, currentPkg *packages.Package, mp typePair, outputDir, outputPkgName, outputPkgPath string) error {
 	// Resolve source type
 	sourceInfo, err := resolveType(a, currentPkg, mp.From)
 	if err != nil {
@@ -269,7 +271,7 @@ func processMapping(a *analyzer.Analyzer, reg *registry.Registry, currentPkg *pa
 	}
 
 	// Generate code
-	gen := generator.New(reg, outputPkgName, outputDir)
+	gen := generator.New(reg, outputPkgName, outputPkgPath, outputDir)
 
 	// Generate all forward mappings in one file
 	forwardCode, err := gen.GenerateFile(forwardMappings, "to")
