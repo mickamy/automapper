@@ -12,7 +12,7 @@ func init() {
 	automapper.RegisterTo[time.Time, string](TimeToRFC3339)
 
 	// string -> time.Time (returns error on invalid format)
-	automapper.RegisterFromE[time.Time, string](RFC3339ToTime)
+	automapper.RegisterFromE[string, time.Time](RFC3339ToTime)
 }
 
 // TimeToRFC3339 converts time.Time to RFC3339 string.

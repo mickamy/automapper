@@ -102,15 +102,9 @@ func (r *Registry) LoadFromConverterInfos(infos []analyzer.ConverterInfo, pkg *p
 			HasError: info.HasError,
 		}
 
-		// Determine source and target based on direction
+		// Determine source and target — type parameters are always [source, dest]
 		source := info.SourceType
 		target := info.TargetType
-
-		if info.Direction == "from" {
-			// RegisterFrom[A, B](fn func(B) A) means B -> A
-			source = info.TargetType
-			target = info.SourceType
-		}
 
 		// Normalize type names to fully qualified form
 		source = normalizeTypeKey(source, pkg)

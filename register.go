@@ -16,15 +16,15 @@ func RegisterTo[A, B any](fn func(A) B) {
 	// The actual implementation is a no-op at runtime.
 }
 
-// RegisterFrom registers a converter function from type B to type A.
-// This is the reverse direction of RegisterTo.
+// RegisterFrom registers a converter function from type A to type B.
+// The type parameter order is [source, dest], same as RegisterTo.
 //
 // Example:
 //
 //	func init() {
-//	    automapper.RegisterFrom[time.Time, *datepb.Date](FromDate)
+//	    automapper.RegisterFrom[int64, time.Time](UnixToTime)
 //	}
-func RegisterFrom[A, B any](fn func(B) A) {
+func RegisterFrom[A, B any](fn func(A) B) {
 	// This function is a marker for the CLI to discover.
 	// The actual implementation is a no-op at runtime.
 }
@@ -41,14 +41,15 @@ func RegisterToE[A, B any](fn func(A) (B, error)) {
 	// The actual implementation is a no-op at runtime.
 }
 
-// RegisterFromE registers a converter function from type B to type A that may return an error.
+// RegisterFromE registers a converter function from type A to type B that may return an error.
+// The type parameter order is [source, dest], same as RegisterToE.
 //
 // Example:
 //
 //	func init() {
-//	    automapper.RegisterFromE[time.Time, *datepb.Date](FromDate)
+//	    automapper.RegisterFromE[string, time.Time](RFC3339ToTime)
 //	}
-func RegisterFromE[A, B any](fn func(B) (A, error)) {
+func RegisterFromE[A, B any](fn func(A) (B, error)) {
 	// This function is a marker for the CLI to discover.
 	// The actual implementation is a no-op at runtime.
 }
@@ -66,14 +67,15 @@ func RegisterToNamed[A, B any](name string, fn func(A) B) {
 	// The actual implementation is a no-op at runtime.
 }
 
-// RegisterFromNamed registers a named converter function from type B to type A.
+// RegisterFromNamed registers a named converter function from type A to type B.
+// The type parameter order is [source, dest], same as RegisterToNamed.
 //
 // Example:
 //
 //	func init() {
-//	    automapper.RegisterFromNamed[time.Time, string]("rfc3339", RFC3339ToTime)
+//	    automapper.RegisterFromNamed[int64, string]("rfc3339", RFC3339ToTime)
 //	}
-func RegisterFromNamed[A, B any](name string, fn func(B) A) {
+func RegisterFromNamed[A, B any](name string, fn func(A) B) {
 	// This function is a marker for the CLI to discover.
 	// The actual implementation is a no-op at runtime.
 }
@@ -90,14 +92,15 @@ func RegisterToNamedE[A, B any](name string, fn func(A) (B, error)) {
 	// The actual implementation is a no-op at runtime.
 }
 
-// RegisterFromNamedE registers a named converter function from type B to type A that may return an error.
+// RegisterFromNamedE registers a named converter function from type A to type B that may return an error.
+// The type parameter order is [source, dest], same as RegisterToNamedE.
 //
 // Example:
 //
 //	func init() {
-//	    automapper.RegisterFromNamedE[time.Time, string]("rfc3339", RFC3339ToTimeE)
+//	    automapper.RegisterFromNamedE[int64, string]("rfc3339", RFC3339ToTimeE)
 //	}
-func RegisterFromNamedE[A, B any](name string, fn func(B) (A, error)) {
+func RegisterFromNamedE[A, B any](name string, fn func(A) (B, error)) {
 	// This function is a marker for the CLI to discover.
 	// The actual implementation is a no-op at runtime.
 }

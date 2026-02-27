@@ -126,7 +126,7 @@ func init() {
     automapper.RegisterTo[time.Time, int64](TimeToUnix)
 
     // int64 -> time.Time
-    automapper.RegisterFrom[time.Time, int64](UnixToTime)
+    automapper.RegisterFrom[int64, time.Time](UnixToTime)
 
     // Converter that returns error
     automapper.RegisterToE[string, int](strconv.Atoi)
@@ -151,7 +151,7 @@ func init() {
     automapper.RegisterToNamed[string, int64]("priceToInt", PriceStringToCents)
 
     // Named converter that returns error
-    automapper.RegisterFromNamedE[string, int64]("priceFromInt", CentsToPriceString)
+    automapper.RegisterFromNamedE[int64, string]("priceFromInt", CentsToPriceString)
 }
 
 func PriceStringToCents(s string) int64 {
@@ -178,13 +178,13 @@ type Product struct {
 | Function                                     | Description              |
 |----------------------------------------------|--------------------------|
 | `RegisterTo[A, B](fn func(A) B)`             | Register A → B converter |
-| `RegisterFrom[A, B](fn func(B) A)`           | Register B → A converter |
+| `RegisterFrom[A, B](fn func(A) B)`           | Register A → B converter |
 | `RegisterToE[A, B](fn func(A) (B, error))`   | A → B with error         |
-| `RegisterFromE[A, B](fn func(B) (A, error))` | B → A with error         |
+| `RegisterFromE[A, B](fn func(A) (B, error))` | A → B with error         |
 | `RegisterToNamed[A, B](name, fn)`            | Named A → B              |
-| `RegisterFromNamed[A, B](name, fn)`          | Named B → A              |
+| `RegisterFromNamed[A, B](name, fn)`          | Named A → B              |
 | `RegisterToNamedE[A, B](name, fn)`           | Named A → B with error   |
-| `RegisterFromNamedE[A, B](name, fn)`         | Named B → A with error   |
+| `RegisterFromNamedE[A, B](name, fn)`         | Named A → B with error   |
 
 ## CLI Flags
 

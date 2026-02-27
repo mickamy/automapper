@@ -14,16 +14,16 @@ import (
 func init() {
 	// Register time.Time <-> int64 converters
 	automapper.RegisterTo[time.Time, int64](TimeToUnix)
-	automapper.RegisterFrom[time.Time, int64](UnixToTime)
+	automapper.RegisterFrom[int64, time.Time](UnixToTime)
 
 	// Register OrderStatus <-> int32 converters
 	automapper.RegisterTo[model.OrderStatus, int32](StatusToInt32)
-	automapper.RegisterFrom[model.OrderStatus, int32](Int32ToStatus)
+	automapper.RegisterFrom[int32, model.OrderStatus](Int32ToStatus)
 
 	// Named converters for price formatting
 	// map:",conv=priceToInt" / map:",conv=priceFromInt" で参照される
 	automapper.RegisterToNamed[string, int64]("priceToInt", PriceStringToCents)
-	automapper.RegisterFromNamedE[string, int64]("priceFromInt", CentsToPriceString)
+	automapper.RegisterFromNamedE[int64, string]("priceFromInt", CentsToPriceString)
 }
 
 // TimeToUnix converts time.Time to Unix timestamp.
