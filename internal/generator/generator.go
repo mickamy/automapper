@@ -433,6 +433,7 @@ func (g *Generator) isOutputPkg(pkgPath string) bool {
 	if g.outputPkgPath != "" {
 		return pkgPath == g.outputPkgPath
 	}
+
 	return pkgPath == g.outputPkg
 }
 
@@ -480,6 +481,7 @@ func (g *Generator) buildQualifiers(mappings []*resolver.Mapping) (map[string]st
 	for name, paths := range nameGroups {
 		if len(paths) == 1 {
 			qualifiers[paths[0]] = name
+
 			continue
 		}
 		// Collision: use parentDir + declaredName as alias.
@@ -535,4 +537,3 @@ func (g *Generator) collectTypePkgs(t types.Type, pkgs map[string]string) {
 		}
 	}
 }
-
