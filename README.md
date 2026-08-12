@@ -1,5 +1,8 @@
 # automapper
 
+> [!IMPORTANT]
+> This repository is archived. Struct mapping continues in [kanna](https://github.com/go-kanna/kanna) as [`kanna-mapper`](https://github.com/go-kanna/kanna#kanna-mapper).
+
 A CLI tool that automatically generates struct-to-struct mapping code for Go.
 
 **Concept**: "Auto-map same name & type, tag only the exceptions"
